@@ -1,173 +1,152 @@
-import { useState, useEffect } from 'react'
-import { useAppContext } from '@/context/AppContext'
-import { LLM_BACKENDS, type LlmBackend } from '@/lib/llmBackends'
-import { GITHUB_UPSTREAM_DEFAULTS } from '@/lib/githubUpstreamDefaults'
+import { useState, useEffect } from 'react';
+import { useAppContext } from '@/context/AppContext';
+import { LLM_BACKENDS } from '@/lib/llmBackends';
+import { GITHUB_UPSTREAM_DEFAULTS } from '@/lib/githubUpstreamDefaults';
+import { createGitHubFork } from '@/lib/githubApi';
 
 export function SetupPanel() {
   const {
     pumpPortalApiKey, setPumpPortalApiKey,
-    solanaWalletSecret, setSolanaWalletSecret,
-    heliusApiKey, setHeliusApiKey,
+    tradingWalletSecret, setTradingWalletSecret,
     modelSettings, setModelSettings,
-    githubWorkspace, setGithubWorkspace
-  } = useAppContext()
+    githubSettings, setGitHubSettings,
+  } = useAppContext();
 
-  const [showWalletSecret, setShowWalletSecret] = useState(false)
-  const [showHeliusKey, setShowHeliusKey] = useState(false)
-  const [githubRepoUrl, setGithubRepoUrl] = useState('')
-  const [isForking, setIsForking] = useState(false)
+  // Helius settings with localStorage persistence
+  const [heliusApiKey, setHeliusApiKey] = useState(() => {
+    return localStorage.getItem('heliusApiKey') || '';
+  });
 
-  // Load GitHub repo URL from workspace settings
+  const [heliusRpcUrl, setHeliusRpcUrl] = useState(() => {
+    return localStorage.getItem('heliusRpcUrl') || 'https://mainnet.helius-rpc.com/';
+  });
+
+  // Persist Helius settings to localStorage
   useEffect(() => {
-    if (githubWorkspace.owner && githubWorkspace.repo) {
-      setGithubRepoUrl(`https://github.com/${githubWorkspace.owner}/${githubWorkspace.repo}`)
-    }
-  }, [githubWorkspace.owner, githubWorkspace.repo])
+    localStorage.setItem('heliusApiKey', heliusApiKey);
+  }, [heliusApiKey]);
 
-  const handleForkRepo = async () => {
-    if (!githubWorkspace.personalAccessToken) {
-      alert('Please set your GitHub Personal Access Token first')
-      return
+  useEffect(() => {
+    localStorage.setItem('heliusRpcUrl', heliusRpcUrl);
+  }, [heliusRpcUrl]);
+
+  const [isCreatingFork, setIsCreatingFork] = useState(false);
+  const [forkResult, setForkResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleCreateFork = async () => {
+    if (!githubSettings.personalAccessToken) {
+      setForkResult({ success: false, message: 'GitHub PAT required to create fork' });
+      return;
     }
 
-    setIsForking(true)
+    setIsCreatingFork(true);
+    setForkResult(null);
+
     try {
-      const response = await fetch(`https://api.github.com/repos/${GITHUB_UPSTREAM_DEFAULTS.owner}/${GITHUB_UPSTREAM_DEFAULTS.repo}/forks`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `token ${githubWorkspace.personalAccessToken}`,
-          'Accept': 'application/vnd.github.v3+json'
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error(`Fork failed: ${response.statusText}`)
+      const result = await createGitHubFork(githubSettings.personalAccessToken);
+      if (result.success) {
+        // Auto-fill the workspace settings with the new fork
+        setGitHubSettings(prev => ({
+          ...prev,
+          owner: result.owner!,
+          repo: result.repo!,
+        }));
+        setForkResult({ success: true, message: `Fork created: ${result.owner}/${result.repo}` });
+      } else {
+        setForkResult({ success: false, message: result.error || 'Failed to create fork' });
       }
-
-      const fork = await response.json()
-      
-      setGithubWorkspace(prev => ({
-        ...prev,
-        owner: fork.owner.login,
-        repo: fork.name
-      }))
-
-      setGithubRepoUrl(fork.html_url)
-      alert(`Successfully forked to ${fork.full_name}`)
     } catch (error) {
-      console.error('Fork error:', error)
-      alert(`Failed to fork: ${error.message}`)
+      console.error('Fork creation error:', error);
+      setForkResult({ success: false, message: 'Unexpected error creating fork' });
     } finally {
-      setIsForking(false)
+      setIsCreatingFork(false);
     }
-  }
-
-  const selectedBackend = LLM_BACKENDS.find(b => b.id === modelSettings.backend) || LLM_BACKENDS[0]
+  };
 
   return (
-    <div className="p-6 space-y-8">
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Setup</h2>
-        <p className="text-gray-600 mb-6">
-          Configure your API keys and preferences. All keys are stored locally in your browser.
-        </p>
-      </div>
-
-      {/* Trading APIs */}
+    <div className="p-4 space-y-6">
+      {/* PumpPortal API */}
       <section>
-        <h3 className="text-lg font-medium mb-4">Trading APIs</h3>
+        <h3 className="text-lg font-semibold mb-2">PumpPortal API</h3>
+        <div className="space-y-2">
+          <label className="block text-sm font-medium">API Key</label>
+          <input
+            type="password"
+            value={pumpPortalApiKey}
+            onChange={(e) => setPumpPortalApiKey(e.target.value)}
+            placeholder="Enter PumpPortal API key"
+            className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+          />
+          <p className="text-xs text-gray-600 dark:text-gray-400">
+            For WebSocket order book + Lightning transactions. Get from{' '}
+            <a href="https://pumpportal.fun" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+              pumpportal.fun
+            </a>
+          </p>
+        </div>
+      </section>
+
+      {/* Trading Wallet */}
+      <section>
+        <h3 className="text-lg font-semibold mb-2">Trading Wallet</h3>
+        <div className="space-y-2">
+          <label className="block text-sm font-medium">Private Key (Base58)</label>
+          <input
+            type="password"
+            value={tradingWalletSecret}
+            onChange={(e) => setTradingWalletSecret(e.target.value)}
+            placeholder="Enter wallet private key"
+            className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+          />
+          <p className="text-xs text-gray-600 dark:text-gray-400">
+            Used for real trading via PumpPortal Lightning. Stored locally in browser only.
+          </p>
+        </div>
+      </section>
+
+      {/* Helius API */}
+      <section>
+        <h3 className="text-lg font-semibold mb-2">Helius API</h3>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">
-              PumpPortal API Key
-              <a 
-                href="https://pumpportal.fun/trading-api" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="ml-2 text-blue-600 hover:text-blue-800"
-              >
-                (Get key)
-              </a>
-            </label>
+            <label className="block text-sm font-medium mb-1">API Key</label>
             <input
               type="password"
-              value={pumpPortalApiKey}
-              onChange={(e) => setPumpPortalApiKey(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter PumpPortal API key..."
+              value={heliusApiKey}
+              onChange={(e) => setHeliusApiKey(e.target.value)}
+              placeholder="Enter Helius API key"
+              className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium mb-2">
-              Solana Wallet Secret (Private Key)
-            </label>
-            <div className="relative">
-              <input
-                type={showWalletSecret ? "text" : "password"}
-                value={solanaWalletSecret}
-                onChange={(e) => setSolanaWalletSecret(e.target.value)}
-                className="w-full px-3 py-2 pr-20 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter private key as base58 string..."
-              />
-              <button
-                type="button"
-                onClick={() => setShowWalletSecret(!showWalletSecret)}
-                className="absolute right-3 top-2 text-sm text-gray-600 hover:text-gray-800"
-              >
-                {showWalletSecret ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              For live trading only. Never share this key.
-            </p>
+            <label className="block text-sm font-medium mb-1">RPC URL</label>
+            <input
+              type="text"
+              value={heliusRpcUrl}
+              onChange={(e) => setHeliusRpcUrl(e.target.value)}
+              placeholder="https://mainnet.helius-rpc.com/"
+              className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+            />
           </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Helius API Key
-              <a 
-                href="https://www.helius.dev" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="ml-2 text-blue-600 hover:text-blue-800"
-              >
-                (Get key)
-              </a>
-            </label>
-            <div className="relative">
-              <input
-                type={showHeliusKey ? "text" : "password"}
-                value={heliusApiKey}
-                onChange={(e) => setHeliusApiKey(e.target.value)}
-                className="w-full px-3 py-2 pr-20 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter Helius API key..."
-              />
-              <button
-                type="button"
-                onClick={() => setShowHeliusKey(!showHeliusKey)}
-                className="absolute right-3 top-2 text-sm text-gray-600 hover:text-gray-800"
-              >
-                {showHeliusKey ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              For enhanced transaction data and RPC endpoints.
-            </p>
-          </div>
+          <p className="text-xs text-gray-600 dark:text-gray-400">
+            For enhanced token metadata, transaction parsing, and RPC reliability. Get from{' '}
+            <a href="https://helius.xyz" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+              helius.xyz
+            </a>
+          </p>
         </div>
       </section>
 
       {/* LLM Settings */}
       <section>
-        <h3 className="text-lg font-medium mb-4">AI Assistant</h3>
+        <h3 className="text-lg font-semibold mb-2">AI Assistant</h3>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">Backend</label>
+            <label className="block text-sm font-medium mb-1">Provider</label>
             <select
-              value={modelSettings.backend}
-              onChange={(e) => setModelSettings(prev => ({ ...prev, backend: e.target.value as LlmBackend['id'] }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={modelSettings.provider}
+              onChange={(e) => setModelSettings(prev => ({ ...prev, provider: e.target.value as any }))}
+              className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
             >
               {LLM_BACKENDS.map(backend => (
                 <option key={backend.id} value={backend.id}>{backend.name}</option>
@@ -175,52 +154,36 @@ export function SetupPanel() {
             </select>
           </div>
 
-          {selectedBackend.requiresApiKey && (
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                {selectedBackend.name} API Key
-                {selectedBackend.apiKeyUrl && (
-                  <a 
-                    href={selectedBackend.apiKeyUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="ml-2 text-blue-600 hover:text-blue-800"
-                  >
-                    (Get key)
-                  </a>
-                )}
-              </label>
-              <input
-                type="password"
-                value={modelSettings.apiKey}
-                onChange={(e) => setModelSettings(prev => ({ ...prev, apiKey: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder={`Enter ${selectedBackend.name} API key...`}
-              />
-            </div>
-          )}
-
-          {selectedBackend.id === 'ollama' && (
-            <div>
-              <label className="block text-sm font-medium mb-2">Ollama Base URL</label>
-              <input
-                type="text"
-                value={modelSettings.baseUrl}
-                onChange={(e) => setModelSettings(prev => ({ ...prev, baseUrl: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="http://localhost:11434"
-              />
-            </div>
-          )}
-
           <div>
-            <label className="block text-sm font-medium mb-2">Model</label>
+            <label className="block text-sm font-medium mb-1">Model</label>
             <input
               type="text"
               value={modelSettings.model}
               onChange={(e) => setModelSettings(prev => ({ ...prev, model: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder={selectedBackend.defaultModel}
+              placeholder="e.g. gpt-4, claude-3-sonnet-20240229"
+              className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">API Key</label>
+            <input
+              type="password"
+              value={modelSettings.apiKey}
+              onChange={(e) => setModelSettings(prev => ({ ...prev, apiKey: e.target.value }))}
+              placeholder="Enter API key"
+              className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Base URL (optional)</label>
+            <input
+              type="text"
+              value={modelSettings.baseUrl}
+              onChange={(e) => setModelSettings(prev => ({ ...prev, baseUrl: e.target.value }))}
+              placeholder="Custom API endpoint (leave empty for default)"
+              className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
             />
           </div>
         </div>
@@ -228,86 +191,81 @@ export function SetupPanel() {
 
       {/* GitHub Workspace */}
       <section>
-        <h3 className="text-lg font-medium mb-4">GitHub Workspace</h3>
+        <h3 className="text-lg font-semibold mb-2">GitHub Workspace</h3>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">
-              Personal Access Token
-              <a 
-                href="https://github.com/settings/tokens" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="ml-2 text-blue-600 hover:text-blue-800"
-              >
-                (Create token)
-              </a>
-            </label>
+            <label className="block text-sm font-medium mb-1">Personal Access Token</label>
             <input
               type="password"
-              value={githubWorkspace.personalAccessToken}
-              onChange={(e) => setGithubWorkspace(prev => ({ ...prev, personalAccessToken: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+              value={githubSettings.personalAccessToken}
+              onChange={(e) => setGitHubSettings(prev => ({ ...prev, personalAccessToken: e.target.value }))}
+              placeholder="ghp_..."
+              className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Needs 'repo' scope for reading/writing files.
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+              Needs repo access. Generate at{' '}
+              <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                github.com/settings/tokens
+              </a>
             </p>
           </div>
 
-          <div className="flex gap-4">
-            <button
-              onClick={handleForkRepo}
-              disabled={!githubWorkspace.personalAccessToken || isForking}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isForking ? 'Forking...' : `Fork ${GITHUB_UPSTREAM_DEFAULTS.owner}/${GITHUB_UPSTREAM_DEFAULTS.repo}`}
-            </button>
-            <span className="px-4 py-2 text-gray-600">or</span>
+          <div className="border rounded-md p-3 bg-gray-50 dark:bg-gray-800/50">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-medium text-sm">Quick Setup</span>
+              <button
+                onClick={handleCreateFork}
+                disabled={isCreatingFork || !githubSettings.personalAccessToken}
+                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreatingFork ? 'Creating...' : 'Fork Default Repo'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Creates a fork of {GITHUB_UPSTREAM_DEFAULTS.owner}/{GITHUB_UPSTREAM_DEFAULTS.repo} in your account
+            </p>
+            {forkResult && (
+              <p className={`text-xs mt-2 ${forkResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                {forkResult.message}
+              </p>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-2">Owner</label>
+              <label className="block text-sm font-medium mb-1">Owner</label>
               <input
                 type="text"
-                value={githubWorkspace.owner}
-                onChange={(e) => setGithubWorkspace(prev => ({ ...prev, owner: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="your-username"
+                value={githubSettings.owner}
+                onChange={(e) => setGitHubSettings(prev => ({ ...prev, owner: e.target.value }))}
+                placeholder="username"
+                className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Repository</label>
+              <label className="block text-sm font-medium mb-1">Repo</label>
               <input
                 type="text"
-                value={githubWorkspace.repo}
-                onChange={(e) => setGithubWorkspace(prev => ({ ...prev, repo: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="solclaw"
+                value={githubSettings.repo}
+                onChange={(e) => setGitHubSettings(prev => ({ ...prev, repo: e.target.value }))}
+                placeholder="repository"
+                className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">Branch</label>
+            <label className="block text-sm font-medium mb-1">Branch</label>
             <input
               type="text"
-              value={githubWorkspace.branch}
-              onChange={(e) => setGithubWorkspace(prev => ({ ...prev, branch: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={githubSettings.branch}
+              onChange={(e) => setGitHubSettings(prev => ({ ...prev, branch: e.target.value }))}
               placeholder="main"
+              className="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
             />
           </div>
-
-          {githubRepoUrl && (
-            <div className="p-3 bg-green-50 rounded-md">
-              <p className="text-sm text-green-800">
-                Connected to: <a href={githubRepoUrl} target="_blank" rel="noopener noreferrer" className="font-mono underline">{githubRepoUrl}</a>
-              </p>
-            </div>
-          )}
         </div>
       </section>
     </div>
-  )
+  );
 }
