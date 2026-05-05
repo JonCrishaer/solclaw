@@ -1,32 +1,3 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "framework": "vite",
-  "env": {
-    "VITE_BASE_PATH": "solclaw",
-    "VITE_GITHUB_REPO_URL": "https://github.com/Enrichfun/solclaw",
-    "VITE_GITHUB_UPSTREAM_OWNER": "Enrichfun",
-    "VITE_GITHUB_UPSTREAM_REPO": "solclaw"
-  },
-  "redirects": [
-    { "source": "/", "destination": "/solclaw", "permanent": false }
-  ],
-  "rewrites": [
-    { "source": "/pump-api/:path*", "destination": "https://swap-api.pump.fun/:path*" },
-    { "source": "/pump-frontend/:path*", "destination": "https://frontend-api.pump.fun/:path*" },
-    { "source": "/dex-api/:path*", "destination": "https://api.dexscreener.com/:path*" },
-    { "source": "/sol-rpc", "destination": "https://api.mainnet-beta.solana.com/" },
-    { "source": "/solclaw", "destination": "/solclaw/index.html" },
-    { "source": "/solclaw/(.*)", "destination": "/solclaw/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
-      ]
-    }
-  ]
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
