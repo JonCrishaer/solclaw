@@ -1,266 +1,175 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import type { ChatMessage, ModelSettings, GitHubWorkspaceSettings } from '@/types';
-
-interface HeliusSettings {
-  apiKey: string;
-}
+import { ChatMessage, ModelSettings, GitHubWorkspaceSettings } from '@/types';
+import { scalperPaperConfig } from '@/lib/scalperPaperConfig';
 
 interface AppState {
-  // Data & Trading
+  // Existing state...
   pumpPortalApiKey: string;
-  heliusSettings: HeliusSettings;
-  tradingWalletSecret: string;
-  
-  // Chart
-  chartMint: string;
-  
-  // Scalper
-  selectedAlgo: string;
-  tradingMode: 'paper' | 'live';
-  
-  // Chat
-  chatMessages: ChatMessage[];
-  
-  // LLM
+  heliusApiKey: string;
+  useHeliusForCandles: boolean;
   modelSettings: ModelSettings;
-  
-  // GitHub
+  solanaWalletSecret: string;
   githubWorkspace: GitHubWorkspaceSettings;
-  
-  // UI
   sidebarMode: 'dashboard' | 'setup' | 'code' | 'nursery';
+  chartMint: string;
+  chartMintPending: string;
+  selectedAlgo: string;
+  tradingMode: 'paper' | 'real';
+  paperScalperActive: boolean;
+  scalperConfig: typeof scalperPaperConfig;
+  messages: ChatMessage[];
+  openFilePath: string | null;
+  fileTree: any[];
 }
 
-type AppAction =
-  | { type: 'SET_PUMPPORTAL_API_KEY'; payload: string }
+type AppAction = 
+  // Existing actions...
+  | { type: 'SET_PUMP_PORTAL_API_KEY'; payload: string }
   | { type: 'SET_HELIUS_API_KEY'; payload: string }
-  | { type: 'SET_TRADING_WALLET_SECRET'; payload: string }
-  | { type: 'SET_CHART_MINT'; payload: string }
-  | { type: 'SET_SELECTED_ALGO'; payload: string }
-  | { type: 'SET_TRADING_MODE'; payload: 'paper' | 'live' }
-  | { type: 'SET_CHAT_MESSAGES'; payload: ChatMessage[] }
+  | { type: 'SET_USE_HELIUS_FOR_CANDLES'; payload: boolean }
   | { type: 'SET_MODEL_SETTINGS'; payload: ModelSettings }
+  | { type: 'SET_SOLANA_WALLET_SECRET'; payload: string }
   | { type: 'SET_GITHUB_WORKSPACE'; payload: GitHubWorkspaceSettings }
-  | { type: 'SET_SIDEBAR_MODE'; payload: 'dashboard' | 'setup' | 'code' | 'nursery' };
+  | { type: 'SET_SIDEBAR_MODE'; payload: AppState['sidebarMode'] }
+  | { type: 'SET_CHART_MINT'; payload: string }
+  | { type: 'SET_CHART_MINT_PENDING'; payload: string }
+  | { type: 'SET_SELECTED_ALGO'; payload: string }
+  | { type: 'SET_TRADING_MODE'; payload: AppState['tradingMode'] }
+  | { type: 'SET_PAPER_SCALPER_ACTIVE'; payload: boolean }
+  | { type: 'UPDATE_SCALPER_CONFIG'; payload: Partial<typeof scalperPaperConfig> }
+  | { type: 'ADD_MESSAGE'; payload: ChatMessage }
+  | { type: 'UPDATE_MESSAGE'; payload: { id: string; updates: Partial<ChatMessage> } }
+  | { type: 'CLEAR_MESSAGES' }
+  | { type: 'SET_OPEN_FILE_PATH'; payload: string | null }
+  | { type: 'SET_FILE_TREE'; payload: any[] };
 
 const initialState: AppState = {
-  pumpPortalApiKey: '',
-  heliusSettings: { apiKey: '' },
-  tradingWalletSecret: '',
-  chartMint: '',
-  selectedAlgo: 'unt-builtin-scalper',
-  tradingMode: 'paper',
-  chatMessages: [],
+  pumpPortalApiKey: localStorage.getItem('pumpPortalApiKey') || '',
+  heliusApiKey: localStorage.getItem('heliusApiKey') || '',
+  useHeliusForCandles: localStorage.getItem('useHeliusForCandles') === 'true',
   modelSettings: {
-    provider: 'openai',
-    model: 'gpt-4o',
-    apiKey: '',
-    baseUrl: '',
+    provider: (localStorage.getItem('llmProvider') as 'openai' | 'anthropic' | 'ollama') || 'openai',
+    apiKey: localStorage.getItem('llmApiKey') || '',
+    model: localStorage.getItem('llmModel') || 'gpt-4o',
+    baseUrl: localStorage.getItem('llmBaseUrl') || '',
   },
+  solanaWalletSecret: localStorage.getItem('solanaWalletSecret') || '',
   githubWorkspace: {
-    personalAccessToken: '',
-    owner: 'JonCrishaer',
-    repo: 'solclaw',
-    branch: 'main',
+    pat: localStorage.getItem('githubPat') || '',
+    owner: localStorage.getItem('githubOwner') || '',
+    repo: localStorage.getItem('githubRepo') || 'solclaw',
+    branch: localStorage.getItem('githubBranch') || 'main',
   },
   sidebarMode: 'dashboard',
+  chartMint: '',
+  chartMintPending: '',
+  selectedAlgo: localStorage.getItem('selectedAlgo') || 'unt-builtin-scalper',
+  tradingMode: (localStorage.getItem('tradingMode') as 'paper' | 'real') || 'paper',
+  paperScalperActive: false,
+  scalperConfig: { ...scalperPaperConfig },
+  messages: [],
+  openFilePath: null,
+  fileTree: [],
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
-    case 'SET_PUMPPORTAL_API_KEY':
-      localStorage.setItem('unt-pump-portal-api-key', action.payload);
+    case 'SET_PUMP_PORTAL_API_KEY':
+      localStorage.setItem('pumpPortalApiKey', action.payload);
       return { ...state, pumpPortalApiKey: action.payload };
     
     case 'SET_HELIUS_API_KEY':
-      const newHeliusSettings = { ...state.heliusSettings, apiKey: action.payload };
-      localStorage.setItem('unt-helius-settings', JSON.stringify(newHeliusSettings));
-      return { ...state, heliusSettings: newHeliusSettings };
+      localStorage.setItem('heliusApiKey', action.payload);
+      return { ...state, heliusApiKey: action.payload };
     
-    case 'SET_TRADING_WALLET_SECRET':
-      localStorage.setItem('unt-trading-wallet-secret', action.payload);
-      return { ...state, tradingWalletSecret: action.payload };
-    
-    case 'SET_CHART_MINT':
-      return { ...state, chartMint: action.payload };
-    
-    case 'SET_SELECTED_ALGO':
-      return { ...state, selectedAlgo: action.payload };
-    
-    case 'SET_TRADING_MODE':
-      return { ...state, tradingMode: action.payload };
-    
-    case 'SET_CHAT_MESSAGES':
-      return { ...state, chatMessages: action.payload };
+    case 'SET_USE_HELIUS_FOR_CANDLES':
+      localStorage.setItem('useHeliusForCandles', action.payload.toString());
+      return { ...state, useHeliusForCandles: action.payload };
     
     case 'SET_MODEL_SETTINGS':
-      localStorage.setItem('unt-model-settings', JSON.stringify(action.payload));
+      localStorage.setItem('llmProvider', action.payload.provider);
+      localStorage.setItem('llmApiKey', action.payload.apiKey);
+      localStorage.setItem('llmModel', action.payload.model);
+      localStorage.setItem('llmBaseUrl', action.payload.baseUrl || '');
       return { ...state, modelSettings: action.payload };
     
+    case 'SET_SOLANA_WALLET_SECRET':
+      localStorage.setItem('solanaWalletSecret', action.payload);
+      return { ...state, solanaWalletSecret: action.payload };
+    
     case 'SET_GITHUB_WORKSPACE':
-      localStorage.setItem('unt-github-workspace', JSON.stringify(action.payload));
+      localStorage.setItem('githubPat', action.payload.pat);
+      localStorage.setItem('githubOwner', action.payload.owner);
+      localStorage.setItem('githubRepo', action.payload.repo);
+      localStorage.setItem('githubBranch', action.payload.branch);
       return { ...state, githubWorkspace: action.payload };
     
     case 'SET_SIDEBAR_MODE':
       return { ...state, sidebarMode: action.payload };
+    
+    case 'SET_CHART_MINT':
+      return { ...state, chartMint: action.payload, chartMintPending: '' };
+    
+    case 'SET_CHART_MINT_PENDING':
+      return { ...state, chartMintPending: action.payload };
+    
+    case 'SET_SELECTED_ALGO':
+      localStorage.setItem('selectedAlgo', action.payload);
+      return { ...state, selectedAlgo: action.payload };
+    
+    case 'SET_TRADING_MODE':
+      localStorage.setItem('tradingMode', action.payload);
+      return { ...state, tradingMode: action.payload };
+    
+    case 'SET_PAPER_SCALPER_ACTIVE':
+      return { ...state, paperScalperActive: action.payload };
+    
+    case 'UPDATE_SCALPER_CONFIG':
+      return { 
+        ...state, 
+        scalperConfig: { ...state.scalperConfig, ...action.payload }
+      };
+    
+    case 'ADD_MESSAGE':
+      return { 
+        ...state, 
+        messages: [...state.messages, action.payload]
+      };
+    
+    case 'UPDATE_MESSAGE':
+      return {
+        ...state,
+        messages: state.messages.map(msg => 
+          msg.id === action.payload.id 
+            ? { ...msg, ...action.payload.updates }
+            : msg
+        )
+      };
+    
+    case 'CLEAR_MESSAGES':
+      return { ...state, messages: [] };
+    
+    case 'SET_OPEN_FILE_PATH':
+      return { ...state, openFilePath: action.payload };
+    
+    case 'SET_FILE_TREE':
+      return { ...state, fileTree: action.payload };
     
     default:
       return state;
   }
 }
 
-interface AppContextType {
+const AppContext = createContext<{
   state: AppState;
   dispatch: React.Dispatch<AppAction>;
-  
-  // Convenience getters/setters for backward compatibility
-  pumpPortalApiKey: string;
-  setPumpPortalApiKey: (key: string) => void;
-  heliusApiKey: string;
-  setHeliusApiKey: (key: string) => void;
-  tradingWalletSecret: string;
-  setTradingWalletSecret: (secret: string) => void;
-  chartMint: string;
-  setChartMint: (mint: string) => void;
-  selectedAlgo: string;
-  setSelectedAlgo: (algo: string) => void;
-  tradingMode: 'paper' | 'live';
-  setTradingMode: (mode: 'paper' | 'live') => void;
-  chatMessages: ChatMessage[];
-  setChatMessages: (messages: ChatMessage[]) => void;
-  modelSettings: ModelSettings;
-  setModelSettings: (settings: ModelSettings | ((prev: ModelSettings) => ModelSettings)) => void;
-  githubWorkspace: GitHubWorkspaceSettings;
-  setGithubWorkspace: (workspace: GitHubWorkspaceSettings | ((prev: GitHubWorkspaceSettings) => GitHubWorkspaceSettings)) => void;
-  sidebarMode: 'dashboard' | 'setup' | 'code' | 'nursery';
-  setSidebarMode: (mode: 'dashboard' | 'setup' | 'code' | 'nursery') => void;
-}
-
-const AppContext = createContext<AppContextType | null>(null);
+} | null>(null);
 
 export function AppContextProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    const loadFromStorage = () => {
-      // PumpPortal API Key
-      const pumpPortalKey = localStorage.getItem('unt-pump-portal-api-key');
-      if (pumpPortalKey) {
-        dispatch({ type: 'SET_PUMPPORTAL_API_KEY', payload: pumpPortalKey });
-      }
-
-      // Helius Settings
-      const heliusSettings = localStorage.getItem('unt-helius-settings');
-      if (heliusSettings) {
-        try {
-          const parsed = JSON.parse(heliusSettings);
-          dispatch({ type: 'SET_HELIUS_API_KEY', payload: parsed.apiKey || '' });
-        } catch (e) {
-          console.warn('Failed to parse stored Helius settings');
-        }
-      }
-
-      // Trading Wallet Secret
-      const walletSecret = localStorage.getItem('unt-trading-wallet-secret');
-      if (walletSecret) {
-        dispatch({ type: 'SET_TRADING_WALLET_SECRET', payload: walletSecret });
-      }
-
-      // Model Settings
-      const modelSettings = localStorage.getItem('unt-model-settings');
-      if (modelSettings) {
-        try {
-          const parsed = JSON.parse(modelSettings);
-          dispatch({ type: 'SET_MODEL_SETTINGS', payload: parsed });
-        } catch (e) {
-          console.warn('Failed to parse stored model settings');
-        }
-      }
-
-      // GitHub Workspace
-      const githubWorkspace = localStorage.getItem('unt-github-workspace');
-      if (githubWorkspace) {
-        try {
-          const parsed = JSON.parse(githubWorkspace);
-          dispatch({ type: 'SET_GITHUB_WORKSPACE', payload: parsed });
-        } catch (e) {
-          console.warn('Failed to parse stored GitHub workspace');
-        }
-      }
-    };
-
-    loadFromStorage();
-  }, []);
-
-  // Convenience functions for backward compatibility
-  const setPumpPortalApiKey = (key: string) => {
-    dispatch({ type: 'SET_PUMPPORTAL_API_KEY', payload: key });
-  };
-
-  const setHeliusApiKey = (key: string) => {
-    dispatch({ type: 'SET_HELIUS_API_KEY', payload: key });
-  };
-
-  const setTradingWalletSecret = (secret: string) => {
-    dispatch({ type: 'SET_TRADING_WALLET_SECRET', payload: secret });
-  };
-
-  const setChartMint = (mint: string) => {
-    dispatch({ type: 'SET_CHART_MINT', payload: mint });
-  };
-
-  const setSelectedAlgo = (algo: string) => {
-    dispatch({ type: 'SET_SELECTED_ALGO', payload: algo });
-  };
-
-  const setTradingMode = (mode: 'paper' | 'live') => {
-    dispatch({ type: 'SET_TRADING_MODE', payload: mode });
-  };
-
-  const setChatMessages = (messages: ChatMessage[]) => {
-    dispatch({ type: 'SET_CHAT_MESSAGES', payload: messages });
-  };
-
-  const setModelSettings = (settings: ModelSettings | ((prev: ModelSettings) => ModelSettings)) => {
-    const newSettings = typeof settings === 'function' ? settings(state.modelSettings) : settings;
-    dispatch({ type: 'SET_MODEL_SETTINGS', payload: newSettings });
-  };
-
-  const setGithubWorkspace = (workspace: GitHubWorkspaceSettings | ((prev: GitHubWorkspaceSettings) => GitHubWorkspaceSettings)) => {
-    const newWorkspace = typeof workspace === 'function' ? workspace(state.githubWorkspace) : workspace;
-    dispatch({ type: 'SET_GITHUB_WORKSPACE', payload: newWorkspace });
-  };
-
-  const setSidebarMode = (mode: 'dashboard' | 'setup' | 'code' | 'nursery') => {
-    dispatch({ type: 'SET_SIDEBAR_MODE', payload: mode });
-  };
-
   return (
-    <AppContext.Provider value={{
-      state,
-      dispatch,
-      pumpPortalApiKey: state.pumpPortalApiKey,
-      setPumpPortalApiKey,
-      heliusApiKey: state.heliusSettings.apiKey,
-      setHeliusApiKey,
-      tradingWalletSecret: state.tradingWalletSecret,
-      setTradingWalletSecret,
-      chartMint: state.chartMint,
-      setChartMint,
-      selectedAlgo: state.selectedAlgo,
-      setSelectedAlgo,
-      tradingMode: state.tradingMode,
-      setTradingMode,
-      chatMessages: state.chatMessages,
-      setChatMessages,
-      modelSettings: state.modelSettings,
-      setModelSettings,
-      githubWorkspace: state.githubWorkspace,
-      setGithubWorkspace,
-      sidebarMode: state.sidebarMode,
-      setSidebarMode,
-    }}>
+    <AppContext.Provider value={{ state, dispatch }}>
       {children}
     </AppContext.Provider>
   );
