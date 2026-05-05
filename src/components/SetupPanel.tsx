@@ -7,63 +7,35 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AlertCircle, ExternalLink, GitFork, Check } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { LLM_BACKENDS } from '@/lib/llmBackends'
-import { GITHUB_UPSTREAM_DEFAULTS } from '@/lib/githubUpstreamDefaults'
 
 export function SetupPanel() {
-  const { state, dispatch } = useAppContext()
+  const { 
+    pumpPortalApiKey, 
+    setPumpPortalApiKey,
+    heliusApiKey,
+    setHeliusApiKey,
+    tradingWalletSecret,
+    setTradingWalletSecret,
+    modelSettings,
+    setModelSettings,
+    githubWorkspace,
+    setGithubWorkspace
+  } = useAppContext()
+  
   const [showPumpPortalKey, setShowPumpPortalKey] = useState(false)
   const [showWalletSecret, setShowWalletSecret] = useState(false)
   const [showHeliusKey, setShowHeliusKey] = useState(false)
-  const [forkStatus, setForkStatus] = useState<'idle' | 'forking' | 'success' | 'error'>('idle')
-
-  const handleForkRepo = async () => {
-    setForkStatus('forking')
-    try {
-      if (!state.github.personalAccessToken) {
-        throw new Error('GitHub Personal Access Token is required')
-      }
-
-      const response = await fetch(`https://api.github.com/repos/${GITHUB_UPSTREAM_DEFAULTS.owner}/${GITHUB_UPSTREAM_DEFAULTS.repo}/forks`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `token ${state.github.personalAccessToken}`,
-          'Accept': 'application/vnd.github.v3+json',
-        },
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || `HTTP ${response.status}`)
-      }
-
-      const forkData = await response.json()
-      
-      // Auto-populate the GitHub settings with the new fork
-      dispatch({
-        type: 'UPDATE_GITHUB',
-        payload: {
-          owner: forkData.owner.login,
-          repo: forkData.name,
-          branch: 'main'
-        }
-      })
-      
-      setForkStatus('success')
-    } catch (error) {
-      console.error('Fork failed:', error)
-      setForkStatus('error')
-    }
-  }
+  const [showLlmKey, setShowLlmKey] = useState(false)
+  const [showGithubToken, setShowGithubToken] = useState(false)
 
   const isSetupComplete = () => {
     return !!(
-      state.pumpPortal.apiKey &&
-      state.wallet.secretKey &&
-      state.llm.apiKey &&
-      state.github.personalAccessToken &&
-      state.github.owner &&
-      state.github.repo
+      pumpPortalApiKey &&
+      tradingWalletSecret &&
+      modelSettings.apiKey &&
+      githubWorkspace.personalAccessToken &&
+      githubWorkspace.owner &&
+      githubWorkspace.repo
     )
   }
 
@@ -80,7 +52,7 @@ export function SetupPanel() {
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            Complete all sections below to unlock full trading features.
+            Complete all required sections below to unlock full trading features.
           </AlertDescription>
         </Alert>
       )}
@@ -104,7 +76,7 @@ export function SetupPanel() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="pumpportal-key">
-                  PumpPortal API Key
+                  PumpPortal API Key *
                   <a 
                     href="https://pumpportal.fun" 
                     target="_blank" 
@@ -118,11 +90,8 @@ export function SetupPanel() {
                   <Input
                     id="pumpportal-key"
                     type={showPumpPortalKey ? "text" : "password"}
-                    value={state.pumpPortal.apiKey}
-                    onChange={(e) => dispatch({
-                      type: 'UPDATE_PUMPPORTAL',
-                      payload: { apiKey: e.target.value }
-                    })}
+                    value={pumpPortalApiKey}
+                    onChange={(e) => setPumpPortalApiKey(e.target.value)}
                     placeholder="Your PumpPortal API key"
                   />
                   <Button
@@ -139,7 +108,7 @@ export function SetupPanel() {
 
               <div className="space-y-2">
                 <Label htmlFor="wallet-secret">
-                  Trading Wallet Secret Key
+                  Trading Wallet Secret Key *
                   <span className="text-sm text-muted-foreground ml-2">
                     (Base58 format, for signing transactions)
                   </span>
@@ -148,11 +117,8 @@ export function SetupPanel() {
                   <Input
                     id="wallet-secret"
                     type={showWalletSecret ? "text" : "password"}
-                    value={state.wallet.secretKey}
-                    onChange={(e) => dispatch({
-                      type: 'UPDATE_WALLET',
-                      payload: { secretKey: e.target.value }
-                    })}
+                    value={tradingWalletSecret}
+                    onChange={(e) => setTradingWalletSecret(e.target.value)}
                     placeholder="Your wallet's secret key (base58)"
                   />
                   <Button
@@ -178,7 +144,7 @@ export function SetupPanel() {
             <CardHeader>
               <CardTitle>Data Sources</CardTitle>
               <CardDescription>
-                Configure external data providers for enhanced chart data
+                Configure external data providers for enhanced chart data and analysis
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -198,11 +164,8 @@ export function SetupPanel() {
                   <Input
                     id="helius-key"
                     type={showHeliusKey ? "text" : "password"}
-                    value={state.helius?.apiKey || ''}
-                    onChange={(e) => dispatch({
-                      type: 'UPDATE_HELIUS',
-                      payload: { apiKey: e.target.value }
-                    })}
+                    value={heliusApiKey}
+                    onChange={(e) => setHeliusApiKey(e.target.value)}
                     placeholder="Your Helius API key"
                   />
                   <Button
@@ -216,8 +179,18 @@ export function SetupPanel() {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Enhanced RPC access for better chart data and transaction history.
+                  Enhanced RPC access for better chart data, transaction history, and token metadata.
+                  Fallback to free RPC if not provided.
                 </p>
+              </div>
+
+              <div className="mt-4 p-3 bg-muted rounded-lg">
+                <div className="text-sm space-y-1">
+                  <div className="font-medium">Current Status:</div>
+                  <div className="text-muted-foreground">
+                    Helius API: {heliusApiKey ? '✅ Configured' : '❌ Not configured (using free RPC)'}
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -233,21 +206,18 @@ export function SetupPanel() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="llm-backend">Model Provider</Label>
+                <Label htmlFor="llm-provider">Model Provider</Label>
                 <select
-                  id="llm-backend"
+                  id="llm-provider"
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                  value={state.llm.backend}
-                  onChange={(e) => dispatch({
-                    type: 'UPDATE_LLM',
-                    payload: { backend: e.target.value as any }
+                  value={modelSettings.provider}
+                  onChange={(e) => setModelSettings({
+                    ...modelSettings,
+                    provider: e.target.value as 'openai' | 'anthropic'
                   })}
                 >
-                  {Object.entries(LLM_BACKENDS).map(([key, config]) => (
-                    <option key={key} value={key}>
-                      {config.name}
-                    </option>
-                  ))}
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
                 </select>
               </div>
 
@@ -255,20 +225,20 @@ export function SetupPanel() {
                 <Label htmlFor="llm-model">Model</Label>
                 <Input
                   id="llm-model"
-                  value={state.llm.model}
-                  onChange={(e) => dispatch({
-                    type: 'UPDATE_LLM',
-                    payload: { model: e.target.value }
+                  value={modelSettings.model}
+                  onChange={(e) => setModelSettings({
+                    ...modelSettings,
+                    model: e.target.value
                   })}
-                  placeholder="e.g., gpt-4, claude-3-sonnet"
+                  placeholder="e.g., gpt-4o, claude-3-5-sonnet-20241022"
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="llm-api-key">
-                  API Key
+                  API Key *
                   <a 
-                    href={LLM_BACKENDS[state.llm.backend]?.signupUrl} 
+                    href={modelSettings.provider === 'openai' ? 'https://platform.openai.com/api-keys' : 'https://console.anthropic.com/'} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="ml-2 text-blue-500 hover:text-blue-700"
@@ -276,27 +246,38 @@ export function SetupPanel() {
                     <ExternalLink className="h-3 w-3 inline" />
                   </a>
                 </Label>
-                <Input
-                  id="llm-api-key"
-                  type="password"
-                  value={state.llm.apiKey}
-                  onChange={(e) => dispatch({
-                    type: 'UPDATE_LLM',
-                    payload: { apiKey: e.target.value }
-                  })}
-                  placeholder="Your API key"
-                />
+                <div className="relative">
+                  <Input
+                    id="llm-api-key"
+                    type={showLlmKey ? "text" : "password"}
+                    value={modelSettings.apiKey}
+                    onChange={(e) => setModelSettings({
+                      ...modelSettings,
+                      apiKey: e.target.value
+                    })}
+                    placeholder="Your API key"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3"
+                    onClick={() => setShowLlmKey(!showLlmKey)}
+                  >
+                    {showLlmKey ? "Hide" : "Show"}
+                  </Button>
+                </div>
               </div>
 
-              {state.llm.backend === 'openai' && (
+              {modelSettings.provider === 'openai' && (
                 <div className="space-y-2">
                   <Label htmlFor="llm-base-url">Base URL (Optional)</Label>
                   <Input
                     id="llm-base-url"
-                    value={state.llm.baseUrl || ''}
-                    onChange={(e) => dispatch({
-                      type: 'UPDATE_LLM',
-                      payload: { baseUrl: e.target.value || undefined }
+                    value={modelSettings.baseUrl || ''}
+                    onChange={(e) => setModelSettings({
+                      ...modelSettings,
+                      baseUrl: e.target.value || ''
                     })}
                     placeholder="https://api.openai.com/v1"
                   />
@@ -320,7 +301,7 @@ export function SetupPanel() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="github-pat">
-                  Personal Access Token
+                  Personal Access Token *
                   <a 
                     href="https://github.com/settings/tokens" 
                     target="_blank" 
@@ -330,94 +311,70 @@ export function SetupPanel() {
                     <ExternalLink className="h-3 w-3 inline" />
                   </a>
                 </Label>
-                <Input
-                  id="github-pat"
-                  type="password"
-                  value={state.github.personalAccessToken}
-                  onChange={(e) => dispatch({
-                    type: 'UPDATE_GITHUB',
-                    payload: { personalAccessToken: e.target.value }
-                  })}
-                  placeholder="ghp_..."
-                />
+                <div className="relative">
+                  <Input
+                    id="github-pat"
+                    type={showGithubToken ? "text" : "password"}
+                    value={githubWorkspace.personalAccessToken}
+                    onChange={(e) => setGithubWorkspace({
+                      ...githubWorkspace,
+                      personalAccessToken: e.target.value
+                    })}
+                    placeholder="ghp_..."
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3"
+                    onClick={() => setShowGithubToken(!showGithubToken)}
+                  >
+                    {showGithubToken ? "Hide" : "Show"}
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Needs 'repo' scope for reading/writing files
                 </p>
               </div>
 
-              <div className="border-t pt-4">
-                <div className="flex items-center gap-4 mb-4">
-                  <h4 className="font-semibold">Repository</h4>
-                  <Button
-                    onClick={handleForkRepo}
-                    disabled={!state.github.personalAccessToken || forkStatus === 'forking'}
-                    size="sm"
-                    className="flex items-center gap-2"
-                  >
-                    {forkStatus === 'forking' ? (
-                      "Forking..."
-                    ) : forkStatus === 'success' ? (
-                      <>
-                        <Check className="h-4 w-4" />
-                        Forked!
-                      </>
-                    ) : (
-                      <>
-                        <GitFork className="h-4 w-4" />
-                        Quick Fork
-                      </>
-                    )}
-                  </Button>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="github-owner">Owner</Label>
+                  <Input
+                    id="github-owner"
+                    value={githubWorkspace.owner}
+                    onChange={(e) => setGithubWorkspace({
+                      ...githubWorkspace,
+                      owner: e.target.value
+                    })}
+                    placeholder="your-username"
+                  />
                 </div>
 
-                {forkStatus === 'error' && (
-                  <Alert className="mb-4">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      Failed to create fork. Check your token permissions and try again.
-                    </AlertDescription>
-                  </Alert>
-                )}
+                <div className="space-y-2">
+                  <Label htmlFor="github-repo">Repository</Label>
+                  <Input
+                    id="github-repo"
+                    value={githubWorkspace.repo}
+                    onChange={(e) => setGithubWorkspace({
+                      ...githubWorkspace,
+                      repo: e.target.value
+                    })}
+                    placeholder="repo-name"
+                  />
+                </div>
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="github-owner">Owner</Label>
-                    <Input
-                      id="github-owner"
-                      value={state.github.owner}
-                      onChange={(e) => dispatch({
-                        type: 'UPDATE_GITHUB',
-                        payload: { owner: e.target.value }
-                      })}
-                      placeholder="your-username"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="github-repo">Repository</Label>
-                    <Input
-                      id="github-repo"
-                      value={state.github.repo}
-                      onChange={(e) => dispatch({
-                        type: 'UPDATE_GITHUB',
-                        payload: { repo: e.target.value }
-                      })}
-                      placeholder="repo-name"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="github-branch">Branch</Label>
-                    <Input
-                      id="github-branch"
-                      value={state.github.branch}
-                      onChange={(e) => dispatch({
-                        type: 'UPDATE_GITHUB',
-                        payload: { branch: e.target.value }
-                      })}
-                      placeholder="main"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="github-branch">Branch</Label>
+                  <Input
+                    id="github-branch"
+                    value={githubWorkspace.branch}
+                    onChange={(e) => setGithubWorkspace({
+                      ...githubWorkspace,
+                      branch: e.target.value
+                    })}
+                    placeholder="main"
+                  />
                 </div>
               </div>
             </CardContent>
@@ -426,9 +383,9 @@ export function SetupPanel() {
       </Tabs>
 
       {isSetupComplete() && (
-        <Alert>
-          <Check className="h-4 w-4" />
-          <AlertDescription>
+        <Alert className="border-green-200 bg-green-50">
+          <Check className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800">
             Setup complete! You can now access all trading features.
           </AlertDescription>
         </Alert>
