@@ -1,375 +1,246 @@
-import { useState } from 'react'
-import { useAppContext } from '@/context/AppContext'
-import { LLM_BACKENDS, type LlmBackend } from '@/lib/llmBackends'
-import { GITHUB_UPSTREAM_DEFAULTS } from '@/lib/githubUpstreamDefaults'
-import { resolveLlmApiUrl } from '@/lib/llmDevProxy'
-
-type SetupTab = 'data' | 'llm' | 'github'
+import React from 'react';
+import { useAppContext } from '@/context/AppContext';
+import { ModelSettings } from '@/types';
+import { llmBackends } from '@/lib/llmBackends';
+import { githubUpstreamDefaults } from '@/lib/githubUpstreamDefaults';
 
 export function SetupPanel() {
-  const { state, dispatch } = useAppContext()
-  const [activeTab, setActiveTab] = useState<SetupTab>('data')
-  const [showApiKey, setShowApiKey] = useState(false)
-  const [showWalletSecret, setShowWalletSecret] = useState(false)
+  const { state, dispatch } = useAppContext();
+  const {
+    pumpPortalApiKey,
+    modelSettings,
+    solanaWalletSecret,
+    githubWorkspace,
+    heliusApiKey,
+    useHeliusForCandles
+  } = state;
 
-  const tabs = [
-    { id: 'data' as const, label: 'Data', icon: '📊' },
-    { id: 'llm' as const, label: 'LLM', icon: '🤖' },
-    { id: 'github' as const, label: 'GitHub', icon: '📁' }
-  ]
+  const handlePumpPortalKeyChange = (key: string) => {
+    dispatch({ type: 'SET_PUMP_PORTAL_API_KEY', payload: key });
+  };
 
-  const handlePumpPortalKeyChange = (value: string) => {
+  const handleHeliusKeyChange = (key: string) => {
+    dispatch({ type: 'SET_HELIUS_API_KEY', payload: key });
+  };
+
+  const handleHeliusToggle = (enabled: boolean) => {
+    dispatch({ type: 'SET_USE_HELIUS_FOR_CANDLES', payload: enabled });
+  };
+
+  const handleModelSettingsChange = (settings: Partial<ModelSettings>) => {
+    dispatch({ 
+      type: 'SET_MODEL_SETTINGS', 
+      payload: { ...modelSettings, ...settings } 
+    });
+  };
+
+  const handleWalletSecretChange = (secret: string) => {
+    dispatch({ type: 'SET_SOLANA_WALLET_SECRET', payload: secret });
+  };
+
+  const handleGithubChange = (field: keyof typeof githubWorkspace, value: string) => {
     dispatch({
-      type: 'UPDATE_PUMP_PORTAL_SETTINGS',
-      payload: { ...state.pumpPortalSettings, apiKey: value }
-    })
-  }
+      type: 'SET_GITHUB_WORKSPACE',
+      payload: { ...githubWorkspace, [field]: value }
+    });
+  };
 
-  const handleWalletSecretChange = (value: string) => {
-    dispatch({
-      type: 'UPDATE_WALLET_SETTINGS',
-      payload: { ...state.walletSettings, secretKey: value }
-    })
-  }
-
-  const handleModelChange = (backend: LlmBackend, field: string, value: string) => {
-    dispatch({
-      type: 'UPDATE_MODEL_SETTINGS',
-      payload: {
-        ...state.modelSettings,
-        [backend]: {
-          ...state.modelSettings[backend],
-          [field]: value
-        }
-      }
-    })
-  }
-
-  const handleGitHubChange = (field: keyof typeof state.githubWorkspace, value: string) => {
-    dispatch({
-      type: 'UPDATE_GITHUB_WORKSPACE',
-      payload: {
-        ...state.githubWorkspace,
-        [field]: value
-      }
-    })
-  }
-
-  const forkUpstream = async () => {
-    if (!state.githubWorkspace.personalAccessToken) {
-      alert('Please set your GitHub Personal Access Token first')
-      return
-    }
-
-    try {
-      const response = await fetch(resolveLlmApiUrl('/api/github/repos/JonCrishaer/solclaw/forks'), {
-        method: 'POST',
-        headers: {
-          'Authorization': `token ${state.githubWorkspace.personalAccessToken}`,
-          'Accept': 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (response.ok) {
-        const fork = await response.json()
-        handleGitHubChange('owner', fork.owner.login)
-        handleGitHubChange('repo', fork.name)
-        alert('Fork created successfully!')
-      } else {
-        const error = await response.text()
-        alert(`Failed to fork: ${error}`)
-      }
-    } catch (err) {
-      alert(`Error forking repo: ${err instanceof Error ? err.message : 'Unknown error'}`)
-    }
-  }
+  const forkRepo = () => {
+    window.open(
+      `https://github.com/${githubUpstreamDefaults.owner}/${githubUpstreamDefaults.repo}/fork`,
+      '_blank'
+    );
+  };
 
   return (
-    <div className="p-6 max-w-4xl">
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">Setup</h2>
-        <p className="text-gray-600">Configure your trading data sources, AI assistant, and code workspace</p>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="flex border-b border-gray-200 mb-6">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
-              activeTab === tab.id
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <span className="mr-2">{tab.icon}</span>
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Data Tab */}
-      {activeTab === 'data' && (
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-medium mb-4">Trading Data & Execution</h3>
-            
-            {/* PumpPortal API Key */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                PumpPortal API Key
-              </label>
-              <div className="relative">
-                <input
-                  type={showApiKey ? 'text' : 'password'}
-                  value={state.pumpPortalSettings.apiKey}
-                  onChange={(e) => handlePumpPortalKeyChange(e.target.value)}
-                  placeholder="Enter your PumpPortal API key"
-                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showApiKey ? '👁️' : '👁️‍🗨️'}
-                </button>
-              </div>
-              <p className="mt-2 text-sm text-gray-500">
-                Required for live order book data and trade execution. Get yours at{' '}
-                <a href="https://pumpportal.fun" target="_blank" rel="noopener noreferrer" 
-                   className="text-blue-600 hover:underline">
-                  pumpportal.fun
-                </a>
-              </p>
-            </div>
-
-            {/* Wallet Secret */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Trading Wallet Secret
-              </label>
-              <div className="relative">
-                <input
-                  type={showWalletSecret ? 'text' : 'password'}
-                  value={state.walletSettings.secretKey}
-                  onChange={(e) => handleWalletSecretChange(e.target.value)}
-                  placeholder="Enter your Solana wallet private key (base58)"
-                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowWalletSecret(!showWalletSecret)}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showWalletSecret ? '👁️' : '👁️‍🗨️'}
-                </button>
-              </div>
-              <div className="mt-2 space-y-1 text-sm text-gray-500">
-                <p>⚠️ Required for live trading. Use a dedicated trading wallet with limited funds.</p>
-                <p>📱 Stored locally in your browser only - never sent to servers.</p>
-                <p>🔧 Paper mode works without this for backtesting strategies.</p>
-              </div>
-            </div>
-
-            {/* Trading Mode Status */}
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-medium text-gray-900 mb-2">Current Status</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <span>PumpPortal Connection:</span>
-                  <span className={state.pumpPortalSettings.apiKey ? 'text-green-600' : 'text-yellow-600'}>
-                    {state.pumpPortalSettings.apiKey ? '✅ Ready' : '⏳ API key needed'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Trading Wallet:</span>
-                  <span className={state.walletSettings.secretKey ? 'text-green-600' : 'text-gray-500'}>
-                    {state.walletSettings.secretKey ? '✅ Configured' : '➖ Paper mode only'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Current Mode:</span>
-                  <span className="font-medium">
-                    📊 Paper Trading
-                  </span>
-                </div>
-              </div>
-            </div>
+    <div className="p-6 space-y-6">
+      <h2 className="text-xl font-semibold mb-4">Setup</h2>
+      
+      {/* Chart Data Source */}
+      <div className="border rounded-lg p-4">
+        <h3 className="font-medium mb-3">Chart Data Source</h3>
+        
+        {/* Helius Option */}
+        <div className="mb-4">
+          <div className="flex items-center gap-3 mb-2">
+            <input
+              type="checkbox"
+              id="useHelius"
+              checked={useHeliusForCandles}
+              onChange={(e) => handleHeliusToggle(e.target.checked)}
+              className="rounded"
+            />
+            <label htmlFor="useHelius" className="font-medium">
+              Use Helius RPC (Recommended)
+            </label>
           </div>
-        </div>
-      )}
-
-      {/* LLM Tab */}
-      {activeTab === 'llm' && (
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-medium mb-4">AI Assistant Configuration</h3>
-            
-            {Object.entries(LLM_BACKENDS).map(([backendKey, backend]) => {
-              const settings = state.modelSettings[backendKey as keyof typeof state.modelSettings]
-              return (
-                <div key={backendKey} className="mb-6 p-4 border border-gray-200 rounded-lg">
-                  <h4 className="font-medium text-gray-900 mb-3">{backend.name}</h4>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* API Key */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        API Key
-                      </label>
-                      <input
-                        type="password"
-                        value={settings?.apiKey || ''}
-                        onChange={(e) => handleModelChange(backendKey as LlmBackend, 'apiKey', e.target.value)}
-                        placeholder={`Enter your ${backend.name} API key`}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    {/* Base URL */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Base URL
-                      </label>
-                      <input
-                        type="url"
-                        value={settings?.baseUrl || ''}
-                        onChange={(e) => handleModelChange(backendKey as LlmBackend, 'baseUrl', e.target.value)}
-                        placeholder={backend.defaultBaseUrl}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    {/* Model */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Model
-                      </label>
-                      <input
-                        type="text"
-                        value={settings?.model || ''}
-                        onChange={(e) => handleModelChange(backendKey as LlmBackend, 'model', e.target.value)}
-                        placeholder={backend.defaultModel}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <p className="mt-2 text-sm text-gray-500">{backend.description}</p>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* GitHub Tab */}
-      {activeTab === 'github' && (
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-medium mb-4">Code Workspace</h3>
-            
-            {/* Personal Access Token */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Personal Access Token
+          
+          {useHeliusForCandles && (
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Helius API Key
               </label>
               <input
                 type="password"
-                value={state.githubWorkspace.personalAccessToken}
-                onChange={(e) => handleGitHubChange('personalAccessToken', e.target.value)}
-                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={heliusApiKey}
+                onChange={(e) => handleHeliusKeyChange(e.target.value)}
+                placeholder="Get free key from helius.dev"
+                className="w-full px-3 py-2 border rounded-md"
               />
-              <p className="mt-2 text-sm text-gray-500">
-                Required for reading/writing code files. Create one at{' '}
-                <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer"
-                   className="text-blue-600 hover:underline">
-                  GitHub Settings → Personal Access Tokens
-                </a>
-                {' '}with "repo" scope.
+              <p className="text-xs text-gray-600 mt-1">
+                Free tier: 100k requests/day. More reliable than Pump API.
               </p>
             </div>
+          )}
+        </div>
 
-            {/* Fork Helper */}
-            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-              <h4 className="font-medium text-gray-900 mb-2">Quick Fork Setup</h4>
-              <p className="text-sm text-gray-600 mb-3">
-                Fork the upstream repo to your GitHub account for easy customization:
-              </p>
-              <div className="flex items-center space-x-4">
-                <span className="text-sm font-mono bg-gray-100 px-2 py-1 rounded">
-                  {GITHUB_UPSTREAM_DEFAULTS.owner}/{GITHUB_UPSTREAM_DEFAULTS.repo}
-                </span>
-                <button
-                  onClick={forkUpstream}
-                  disabled={!state.githubWorkspace.personalAccessToken}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
-                >
-                  Fork to My Account
-                </button>
-              </div>
-            </div>
+        {/* PumpPortal Fallback */}
+        <div className={useHeliusForCandles ? 'opacity-50' : ''}>
+          <label className="block text-sm font-medium mb-2">
+            PumpPortal API Key {useHeliusForCandles ? '(Backup)' : ''}
+          </label>
+          <input
+            type="password"
+            value={pumpPortalApiKey}
+            onChange={(e) => handlePumpPortalKeyChange(e.target.value)}
+            placeholder="Get from PumpPortal.fun"
+            className="w-full px-3 py-2 border rounded-md"
+            disabled={useHeliusForCandles}
+          />
+          <p className="text-xs text-gray-600 mt-1">
+            {useHeliusForCandles 
+              ? 'Will be used if Helius fails' 
+              : 'Required for live trade data and candles'
+            }
+          </p>
+        </div>
+      </div>
 
-            {/* Manual Repository Settings */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Owner
-                </label>
-                <input
-                  type="text"
-                  value={state.githubWorkspace.owner}
-                  onChange={(e) => handleGitHubChange('owner', e.target.value)}
-                  placeholder="your-username"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+      {/* LLM Settings */}
+      <div className="border rounded-lg p-4">
+        <h3 className="font-medium mb-3">Algo Assistant (LLM)</h3>
+        
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium mb-2">Provider</label>
+            <select
+              value={modelSettings.provider}
+              onChange={(e) => handleModelSettingsChange({ 
+                provider: e.target.value as 'openai' | 'anthropic' | 'ollama' 
+              })}
+              className="w-full px-3 py-2 border rounded-md"
+            >
+              {llmBackends.map(backend => (
+                <option key={backend.id} value={backend.id}>
+                  {backend.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Repository
-                </label>
-                <input
-                  type="text"
-                  value={state.githubWorkspace.repo}
-                  onChange={(e) => handleGitHubChange('repo', e.target.value)}
-                  placeholder="solclaw"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">API Key</label>
+            <input
+              type="password"
+              value={modelSettings.apiKey}
+              onChange={(e) => handleModelSettingsChange({ apiKey: e.target.value })}
+              placeholder={`Enter ${modelSettings.provider} API key`}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Branch
-                </label>
-                <input
-                  type="text"
-                  value={state.githubWorkspace.branch}
-                  onChange={(e) => handleGitHubChange('branch', e.target.value)}
-                  placeholder="main"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-
-            {/* Status */}
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-medium text-gray-900 mb-2">Workspace Status</h4>
-              <div className="text-sm text-gray-600">
-                {state.githubWorkspace.personalAccessToken && state.githubWorkspace.owner && state.githubWorkspace.repo ? (
-                  <span className="text-green-600">✅ Ready to edit code files</span>
-                ) : (
-                  <span className="text-yellow-600">⏳ Complete setup to enable code editing</span>
-                )}
-              </div>
-            </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Model</label>
+            <input
+              type="text"
+              value={modelSettings.model}
+              onChange={(e) => handleModelSettingsChange({ model: e.target.value })}
+              placeholder="e.g., gpt-4o, claude-3-5-sonnet-20241022"
+              className="w-full px-3 py-2 border rounded-md"
+            />
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Solana Wallet */}
+      <div className="border rounded-lg p-4">
+        <h3 className="font-medium mb-3">Solana Trading Wallet</h3>
+        <label className="block text-sm font-medium mb-2">
+          Private Key (Base58)
+        </label>
+        <input
+          type="password"
+          value={solanaWalletSecret}
+          onChange={(e) => handleWalletSecretChange(e.target.value)}
+          placeholder="Your Solana wallet private key"
+          className="w-full px-3 py-2 border rounded-md"
+        />
+        <p className="text-xs text-gray-600 mt-1">
+          Stored locally only. Used for paper trading simulation and live trades.
+        </p>
+      </div>
+
+      {/* GitHub Workspace */}
+      <div className="border rounded-lg p-4">
+        <h3 className="font-medium mb-3">GitHub Workspace (Optional)</h3>
+        
+        <button
+          onClick={forkRepo}
+          className="mb-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+        >
+          Fork Repository
+        </button>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              Personal Access Token
+            </label>
+            <input
+              type="password"
+              value={githubWorkspace.pat}
+              onChange={(e) => handleGithubChange('pat', e.target.value)}
+              placeholder="ghp_..."
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-2">Owner</label>
+              <input
+                type="text"
+                value={githubWorkspace.owner}
+                onChange={(e) => handleGithubChange('owner', e.target.value)}
+                placeholder="your-username"
+                className="w-full px-3 py-2 border rounded-md"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-2">Repository</label>
+              <input
+                type="text"
+                value={githubWorkspace.repo}
+                onChange={(e) => handleGithubChange('repo', e.target.value)}
+                placeholder="solclaw"
+                className="w-full px-3 py-2 border rounded-md"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Branch</label>
+            <input
+              type="text"
+              value={githubWorkspace.branch}
+              onChange={(e) => handleGithubChange('branch', e.target.value)}
+              placeholder="main"
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+        </div>
+      </div>
     </div>
-  )
+  );
 }
