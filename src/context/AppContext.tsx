@@ -1,189 +1,180 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { type ChatMessage, type ModelSettings, type GitHubWorkspaceSettings } from '@/types'
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { ChatMessage, ModelSettings, GitHubWorkspaceSettings } from '@/types';
 
 interface AppContextType {
-  // PumpPortal & Trading
-  pumpPortalApiKey: string
-  setPumpPortalApiKey: (key: string) => void
-  solanaWalletSecret: string
-  setSolanaWalletSecret: (secret: string) => void
-  heliusApiKey: string
-  setHeliusApiKey: (key: string) => void
+  // Data & Trading
+  pumpPortalApiKey: string;
+  setPumpPortalApiKey: (key: string) => void;
+  heliusApiKey: string;
+  setHeliusApiKey: (key: string) => void;
+  tradingWalletSecret: string;
+  setTradingWalletSecret: (secret: string) => void;
   
-  // Chart & Analytics
-  activeMint: string
-  setActiveMint: (mint: string) => void
-  bounceLines: Record<string, number[]>
-  setBounceLines: (mint: string, lines: number[]) => void
+  // Chart
+  chartMint: string;
+  setChartMint: (mint: string) => void;
   
-  // AI Chat
-  messages: ChatMessage[]
-  setMessages: (messages: ChatMessage[]) => void
-  modelSettings: ModelSettings
-  setModelSettings: (settings: ModelSettings) => void
+  // Scalper
+  selectedAlgo: string;
+  setSelectedAlgo: (algo: string) => void;
+  tradingMode: 'paper' | 'live';
+  setTradingMode: (mode: 'paper' | 'live') => void;
   
-  // GitHub Workspace
-  githubWorkspace: GitHubWorkspaceSettings
-  setGithubWorkspace: (settings: GitHubWorkspaceSettings) => void
+  // Chat
+  chatMessages: ChatMessage[];
+  setChatMessages: (messages: ChatMessage[]) => void;
   
-  // UI State
-  sidebarMode: 'dashboard' | 'setup' | 'code' | 'nursery'
-  setSidebarMode: (mode: 'dashboard' | 'setup' | 'code' | 'nursery') => void
-  selectedAlgo: string
-  setSelectedAlgo: (algo: string) => void
-  tradingMode: 'paper' | 'live'
-  setTradingMode: (mode: 'paper' | 'live') => void
+  // LLM
+  modelSettings: ModelSettings;
+  setModelSettings: (settings: ModelSettings | ((prev: ModelSettings) => ModelSettings)) => void;
   
-  // Workspace
-  openFilePath: string | null
-  setOpenFilePath: (path: string | null) => void
-  fileTree: string[]
-  setFileTree: (files: string[]) => void
+  // GitHub
+  githubWorkspace: GitHubWorkspaceSettings;
+  setGithubWorkspace: (workspace: GitHubWorkspaceSettings | ((prev: GitHubWorkspaceSettings) => GitHubWorkspaceSettings)) => void;
+  
+  // UI
+  sidebarMode: 'dashboard' | 'setup' | 'code' | 'nursery';
+  setSidebarMode: (mode: 'dashboard' | 'setup' | 'code' | 'nursery') => void;
 }
 
-const AppContext = createContext<AppContextType | null>(null)
+const AppContext = createContext<AppContextType | null>(null);
 
-export function AppProvider({ children }: { children: ReactNode }) {
-  // PumpPortal & Trading
-  const [pumpPortalApiKey, setPumpPortalApiKeyState] = useState('')
-  const [solanaWalletSecret, setSolanaWalletSecretState] = useState('')
-  const [heliusApiKey, setHeliusApiKeyState] = useState('')
+export function AppContextProvider({ children }: { children: React.ReactNode }) {
+  // Data & Trading
+  const [pumpPortalApiKey, setPumpPortalApiKeyState] = useState('');
+  const [heliusApiKey, setHeliusApiKeyState] = useState('');
+  const [tradingWalletSecret, setTradingWalletSecretState] = useState('');
   
-  // Chart & Analytics
-  const [activeMint, setActiveMint] = useState('')
-  const [bounceLines, setBounceLinesTotalState] = useState<Record<string, number[]>>({})
+  // Chart
+  const [chartMint, setChartMint] = useState('');
   
-  // AI Chat
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [modelSettings, setModelSettingsState] = useState<ModelSettings>({
-    backend: 'openai',
+  // Scalper
+  const [selectedAlgo, setSelectedAlgo] = useState('unt-builtin-scalper');
+  const [tradingMode, setTradingMode] = useState<'paper' | 'live'>('paper');
+  
+  // Chat
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  
+  // LLM
+  const [modelSettings, setModelSettings] = useState<ModelSettings>({
+    provider: 'openai',
+    model: 'gpt-4o',
     apiKey: '',
     baseUrl: '',
-    model: 'gpt-4'
-  })
+  });
   
-  // GitHub Workspace
-  const [githubWorkspace, setGithubWorkspaceState] = useState<GitHubWorkspaceSettings>({
+  // GitHub
+  const [githubWorkspace, setGithubWorkspace] = useState<GitHubWorkspaceSettings>({
     personalAccessToken: '',
-    owner: '',
-    repo: '',
-    branch: 'main'
-  })
+    owner: 'JonCrishaer',
+    repo: 'solclaw',
+    branch: 'main',
+  });
   
-  // UI State
-  const [sidebarMode, setSidebarMode] = useState<'dashboard' | 'setup' | 'code' | 'nursery'>('dashboard')
-  const [selectedAlgo, setSelectedAlgo] = useState('unt-builtin-scalper')
-  const [tradingMode, setTradingMode] = useState<'paper' | 'live'>('paper')
-  
-  // Workspace
-  const [openFilePath, setOpenFilePath] = useState<string | null>(null)
-  const [fileTree, setFileTree] = useState<string[]>([])
+  // UI
+  const [sidebarMode, setSidebarMode] = useState<'dashboard' | 'setup' | 'code' | 'nursery'>('dashboard');
 
-  // LocalStorage persistence
+  // Persistence
   useEffect(() => {
-    const saved = localStorage.getItem('pumpPortalApiKey')
-    if (saved) setPumpPortalApiKeyState(saved)
-  }, [])
-  
-  useEffect(() => {
-    const saved = localStorage.getItem('solanaWalletSecret')
-    if (saved) setSolanaWalletSecretState(saved)
-  }, [])
+    const stored = localStorage.getItem('unt-pump-portal-api-key');
+    if (stored) setPumpPortalApiKeyState(stored);
+  }, []);
 
   useEffect(() => {
-    const saved = localStorage.getItem('heliusApiKey')
-    if (saved) setHeliusApiKeyState(saved)
-  }, [])
-  
+    const stored = localStorage.getItem('unt-helius-api-key');
+    if (stored) setHeliusApiKeyState(stored);
+  }, []);
+
   useEffect(() => {
-    const saved = localStorage.getItem('modelSettings')
-    if (saved) {
+    const stored = localStorage.getItem('unt-trading-wallet-secret');
+    if (stored) setTradingWalletSecretState(stored);
+  }, []);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('unt-model-settings');
+    if (stored) {
       try {
-        setModelSettingsState(JSON.parse(saved))
+        setModelSettings(JSON.parse(stored));
       } catch (e) {
-        console.warn('Failed to parse saved model settings:', e)
+        console.warn('Failed to parse stored model settings');
       }
     }
-  }, [])
-  
+  }, []);
+
   useEffect(() => {
-    const saved = localStorage.getItem('githubWorkspace')
-    if (saved) {
+    const stored = localStorage.getItem('unt-github-workspace');
+    if (stored) {
       try {
-        setGithubWorkspaceState(JSON.parse(saved))
+        setGithubWorkspace(JSON.parse(stored));
       } catch (e) {
-        console.warn('Failed to parse saved GitHub workspace:', e)
+        console.warn('Failed to parse stored GitHub workspace');
       }
     }
-  }, [])
-  
-  useEffect(() => {
-    const saved = localStorage.getItem('bounceLines')
-    if (saved) {
-      try {
-        setBounceLinesTotalState(JSON.parse(saved))
-      } catch (e) {
-        console.warn('Failed to parse saved bounce lines:', e)
-      }
-    }
-  }, [])
+  }, []);
 
   const setPumpPortalApiKey = (key: string) => {
-    setPumpPortalApiKeyState(key)
-    localStorage.setItem('pumpPortalApiKey', key)
-  }
-  
-  const setSolanaWalletSecret = (secret: string) => {
-    setSolanaWalletSecretState(secret)
-    localStorage.setItem('solanaWalletSecret', secret)
-  }
+    setPumpPortalApiKeyState(key);
+    localStorage.setItem('unt-pump-portal-api-key', key);
+  };
 
   const setHeliusApiKey = (key: string) => {
-    setHeliusApiKeyState(key)
-    localStorage.setItem('heliusApiKey', key)
-  }
-  
-  const setModelSettings = (settings: ModelSettings) => {
-    setModelSettingsState(settings)
-    localStorage.setItem('modelSettings', JSON.stringify(settings))
-  }
-  
-  const setGithubWorkspace = (settings: GitHubWorkspaceSettings) => {
-    setGithubWorkspaceState(settings)
-    localStorage.setItem('githubWorkspace', JSON.stringify(settings))
-  }
-  
-  const setBounceLines = (mint: string, lines: number[]) => {
-    const updated = { ...bounceLines, [mint]: lines }
-    setBounceLinesTotalState(updated)
-    localStorage.setItem('bounceLines', JSON.stringify(updated))
-  }
+    setHeliusApiKeyState(key);
+    localStorage.setItem('unt-helius-api-key', key);
+  };
+
+  const setTradingWalletSecret = (secret: string) => {
+    setTradingWalletSecretState(secret);
+    localStorage.setItem('unt-trading-wallet-secret', secret);
+  };
+
+  const setModelSettingsWithStorage = (settings: ModelSettings | ((prev: ModelSettings) => ModelSettings)) => {
+    setModelSettings(prev => {
+      const newSettings = typeof settings === 'function' ? settings(prev) : settings;
+      localStorage.setItem('unt-model-settings', JSON.stringify(newSettings));
+      return newSettings;
+    });
+  };
+
+  const setGithubWorkspaceWithStorage = (workspace: GitHubWorkspaceSettings | ((prev: GitHubWorkspaceSettings) => GitHubWorkspaceSettings)) => {
+    setGithubWorkspace(prev => {
+      const newWorkspace = typeof workspace === 'function' ? workspace(prev) : workspace;
+      localStorage.setItem('unt-github-workspace', JSON.stringify(newWorkspace));
+      return newWorkspace;
+    });
+  };
 
   return (
     <AppContext.Provider value={{
-      pumpPortalApiKey, setPumpPortalApiKey,
-      solanaWalletSecret, setSolanaWalletSecret,
-      heliusApiKey, setHeliusApiKey,
-      activeMint, setActiveMint,
-      bounceLines, setBounceLines,
-      messages, setMessages,
-      modelSettings, setModelSettings,
-      githubWorkspace, setGithubWorkspace,
-      sidebarMode, setSidebarMode,
-      selectedAlgo, setSelectedAlgo,
-      tradingMode, setTradingMode,
-      openFilePath, setOpenFilePath,
-      fileTree, setFileTree
+      pumpPortalApiKey,
+      setPumpPortalApiKey,
+      heliusApiKey,
+      setHeliusApiKey,
+      tradingWalletSecret,
+      setTradingWalletSecret,
+      chartMint,
+      setChartMint,
+      selectedAlgo,
+      setSelectedAlgo,
+      tradingMode,
+      setTradingMode,
+      chatMessages,
+      setChatMessages,
+      modelSettings,
+      setModelSettings: setModelSettingsWithStorage,
+      githubWorkspace,
+      setGithubWorkspace: setGithubWorkspaceWithStorage,
+      sidebarMode,
+      setSidebarMode,
     }}>
       {children}
     </AppContext.Provider>
-  )
+  );
 }
 
 export function useAppContext() {
-  const context = useContext(AppContext)
+  const context = useContext(AppContext);
   if (!context) {
-    throw new Error('useAppContext must be used within AppProvider')
+    throw new Error('useAppContext must be used within AppContextProvider');
   }
-  return context
+  return context;
 }
